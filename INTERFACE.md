@@ -341,6 +341,7 @@ Codes: `schema_invalid`, `contract_version_mismatch`, `hmac_invalid`, `auth_requ
 | GET | `/v1/verify/signature` | canonical string + signature helper |
 | WS | `/v1/ws/verdicts` | verdicts + alerts |
 | WS | `/v1/ws/timeline` | all audit events |
+| GET | `/timeline` | R3 timeline screen (HTML/JS; open, consumes `/v1/ws/timeline` with `?api_key=`) |
 
 OpenAPI: `GET /docs`.
 
