@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from guardian.adapters.brain_api import actuator_calls, system, verdicts, ws
+from guardian.adapters.brain_api import actuator_calls, system, timeline_ui, verdicts, ws
 from guardian.adapters.brain_api.deps import ScenarioMiddleware, error
 
 if TYPE_CHECKING:
@@ -36,5 +36,5 @@ def install(app: FastAPI, guardian: Guardian) -> None:
         guardian.audit.emit("error", f"unhandled API error: {type(exc).__name__}", data={"kind": "api_error"})
         return error(500, "internal_error", "internal error; treat any data as unknown")
 
-    for module in (system, verdicts, actuator_calls, ws):
+    for module in (system, verdicts, actuator_calls, ws, timeline_ui):
         app.include_router(module.router)

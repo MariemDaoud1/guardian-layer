@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from guardian.actuator_watch.effect_verifier import DslError, Predicate, parse_expect
-from guardian.models import ActuatorCall, Status
+from guardian.models import ActuatorCall, Status, ThreatLevel
 from tests.conftest import Harness
 
 
@@ -161,6 +161,19 @@ async def test_unauthorised_effect_and_dispatch(city: Harness) -> None:
     assert await v.expect(disp, {"status": "ok", "current_state": {}}) == ["no_effect"]
     assert await v.expect(disp, {"status": "ok", "current_state": {"unit_id": "f-1", "eta_s": 60}}) == []
     assert outcomes(city, "dispatch-central") == ["no_effect", "verified"]
+
+
+async def test_no_effect_still_caught_in_an_elevated_zone(city: Harness) -> None:
+    """In a raised-threat zone the verify sensor is capped to `suspect` (corroboration is skipped for a sensor
+    whose change we explained with our own order). A self-consistent `suspect` reading must still let the verifier
+    conclude `no_effect` — otherwise actuator checks silently stop working exactly during an incident."""
+    city.g.levels.raise_to("zone-07", ThreatLevel.elevated, "test")
+    city.sim.stuck_actuators.add("valve-port-12")
+    await _forward(city, call())
+    await city.advance(35)
+    assert city.g.state.get("fm-port-01").latest_verdict.status == Status.suspect  # type: ignore[union-attr]
+    assert outcomes(city, "valve-port-12") == ["no_effect"]
+    assert city.g.containment.is_unreliable("valve-port-12")
 
 
 async def test_untrusted_verify_sensor_gives_unknown_and_quarantine_watch(city: Harness) -> None:

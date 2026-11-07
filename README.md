@@ -67,7 +67,10 @@ curl localhost:8100/health
 python -m scenarios.run T1               # in another shell (export the .env keys first, e.g. `set -a; . ./.env`)
 ```
 
-OpenAPI docs: <http://localhost:8100/docs>.
+OpenAPI docs: <http://localhost:8100/docs>. Live timeline screen (R3): <http://localhost:8100/timeline> —
+a dependency-free HTML page that subscribes to `WS /v1/ws/timeline` and shows reading → verdict → decision →
+action as they happen. Paste an API key (or open `/timeline?api_key=<key>`); filter by sensor/actuator/zone to
+follow one chain of cause and effect.
 
 ## Test Book scenarios
 
@@ -78,6 +81,11 @@ Each scenario has an in-process test (`tests/scenarios/test_tXX_*.py`, simulated
 ```bash
 make scenario T=T1        # or: python -m scenarios.run T1 | all
 ```
+
+The physics-heavy scenario **T11** (a real flood that rises over minutes) is slow at real time. Start the twin
+mock with `TWIN_SPEED=8` (env, `.env`, or `TWIN_SPEED=8 docker compose up`) to speed the simulated physics —
+not the timestamps — so T11 finishes in ~80 s. Run scenarios one at a time (or leave a short gap); back to back,
+a raised zone threat level from one scenario can still be decaying when the next starts.
 
 | ID | Scenario | Guardian behaviour |
 |---|---|---|
@@ -171,6 +179,15 @@ tests/             unit/ integration/ scenarios/ fixtures/ (fixtures are embedde
   quarantine by hand.
 - **Slow drift** counts only *sub-threshold*, same-sign deviations; a large deviation is an event and resets the
   window.
+- **Containment outranks staleness in a verdict request.** A sensor we are actively watching and have isolated or
+  quarantined is reported `untrusted` even if its stream briefly pauses (e.g. right at the 2× stale boundary), so
+  the Brain gets the precise "we contained this" signal instead of a less specific `unknown`. A sensor never heard
+  from since a restart (`last_seen` is None) still falls through to the `unknown` fail-safe.
+- **Effect verification works in a raised-threat zone.** A verify sensor's reading counts as independent evidence of
+  a physical effect when it is `trusted`, or `suspect` *only because of threat-level tightening while self-consistent*.
+  Corroboration is skipped for a sensor whose change we explained with our own in-flight order, so under `elevated`/
+  `under_attack` it would otherwise be capped to `suspect` and the actuator could never be checked — exactly when it
+  matters most. An `untrusted`/`unknown` verify sensor still yields `unknown` and does not accuse the actuator.
 
 ## Known limitations
 

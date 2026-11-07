@@ -29,3 +29,16 @@ async def test_t01_fake_flood(city: Harness) -> None:
         ev("containment", "isolate_sensor", sensor_id="wl-port-03"),
         ev("alert", "spoofing"),
     ])
+
+
+async def test_isolated_sensor_stays_untrusted_when_its_stream_goes_quiet(city: Harness) -> None:
+    """An isolated sensor we have been watching must stay `untrusted` (contained) past the stale boundary, not
+    flip to `unknown` — otherwise a momentary gap right at 2x the interval masks the containment signal."""
+    city.sim.inject("fake_flood", {"sensor_id": "wl-port-03", "level_m": 1.80})
+    await city.advance(10)
+    assert city.g.containment.is_isolated("wl-port-03")
+    city.sim.inject("silence", {"sensor_id": "wl-port-03"})  # stream stops; well past 2x the 5s interval
+    await city.advance(20)
+    assert city.g.liveness.is_stale(city.g.state.get("wl-port-03"))  # type: ignore[arg-type]
+    v = (await city.api("POST", "/v1/verdicts/request", json={"sensor_id": "wl-port-03"})).json()
+    assert v["status"] == "untrusted" and "sensor_isolated" in v["reasons"]

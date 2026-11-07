@@ -111,9 +111,19 @@ class EffectVerifier:
 
     # ---------- helpers
     def _trusted(self, sensor_id: str) -> bool:
+        """Is this verify sensor's reading usable as independent evidence of a physical effect?
+
+        A `trusted` sensor always is. A `suspect` one counts too *only when it is self-consistent* (no range,
+        semantic, rate, flatline or drift problem): in a raised-threat zone the scorer caps a sensor to
+        `suspect` for lack of corroboration, and corroboration is deliberately skipped for a sensor whose
+        change we ourselves explained with the in-flight order — so without this, effect verification could
+        never conclude in exactly the zones (elevated / under_attack) where it matters most. An `untrusted`
+        or `unknown` sensor is never usable, so we still do not accuse the actuator on its word."""
         s = self.state.get(sensor_id)
-        return bool(s and not s.stale and s.latest_verdict and s.latest_verdict.status == Status.trusted
-                    and not self.containment.is_contained(sensor_id))
+        if not (s and not s.stale and s.latest_verdict and not self.containment.is_contained(sensor_id)):
+            return False
+        v = s.latest_verdict
+        return v.status == Status.trusted or (v.status == Status.suspect and v.self_consistent)
 
     def _value(self, sensor_id: str, field_: str) -> float | None:
         s = self.state.get(sensor_id)

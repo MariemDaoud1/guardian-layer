@@ -157,14 +157,18 @@ class Pipeline:
         if s is None:
             return self.engine.unknown(sensor_id, "unknown_sensor", sequence_no)
         threat = self.levels.get(s.zone_id)
+        v = self.state.find_verdict(sensor_id, sequence_no) if sequence_no is not None else s.latest_verdict
+        contained = self.containment.contained_reason(sensor_id)
+        # A sensor we are actively watching and have deliberately isolated/quarantined is untrusted even if its
+        # stream has briefly gone quiet: containment is a stronger, more precise signal for the Brain than "no
+        # recent reading", and this keeps the verdict stable across a momentary gap at the stale boundary. A
+        # sensor never heard from since a restart (last_seen is None) still falls through to the unknown fail-safe.
+        if contained and v is not None and s.last_seen is not None:
+            return v if v.status == Status.untrusted else self.engine.reissue(v, Status.untrusted, contained, threat)
         if self.l6.is_stale(s):
             return self.engine.unknown(sensor_id, "stale", sequence_no, s.zone_id, s.sensor_type, threat)
-        v = self.state.find_verdict(sensor_id, sequence_no) if sequence_no is not None else s.latest_verdict
         if v is None:
             return self.engine.unknown(sensor_id, "no_verdict", sequence_no, s.zone_id, s.sensor_type, threat)
-        contained = self.containment.contained_reason(sensor_id)
-        if contained and v.status != Status.untrusted:
-            return self.engine.reissue(v, Status.untrusted, contained, threat)
         is_latest = s.latest_verdict is not None and v.verdict_id == s.latest_verdict.verdict_id
         if v.expires_at <= self.clock.now() and is_latest:
             tight = self.cfg.thresholds.scoring.tightened
