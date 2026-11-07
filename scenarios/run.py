@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -69,6 +70,17 @@ class Run:
         for d in devices:
             await self.g.post("/v1/containment/clear", json={"device_id": d, "reason": f"{self.sid} cleanup"},
                               headers=self.ops)
+
+    async def reset(self) -> None:
+        """Start from a clean slate: release every containment a previous scenario may have left, and clear twin
+        faults. Without this, `run all` is order-dependent — e.g. a sensor isolated earlier makes a later
+        scenario's trust_ref untrusted and its actuator call is blocked before any effect check runs."""
+        with contextlib.suppress(httpx.HTTPError):
+            for rec in (await self.get("/v1/containment")).get("active", []):
+                await self.g.post("/v1/containment/clear",
+                                  json={"device_id": rec["device_id"], "reason": f"{self.sid} pre-reset"},
+                                  headers=self.ops)
+        await self.inject("clear", weather=True)
 
     def alerts_of(self, alerts: list[dict[str, Any]], type_: str) -> list[dict[str, Any]]:
         return [a for a in alerts if a["type"] == type_]
@@ -213,6 +225,7 @@ async def run(sid: str) -> bool:
     r = Run(sid)
     r.log("start", guardian=GUARDIAN, twin=TWIN, brain=BRAIN)
     try:
+        await r.reset()
         await SCENARIOS[sid](r)
     except httpx.HTTPError as e:
         r.expect("stack reachable", False, error=str(e))
